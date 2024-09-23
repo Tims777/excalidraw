@@ -1,7 +1,6 @@
 import polyfill from "../packages/excalidraw/polyfill";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trackEvent } from "../packages/excalidraw/analytics";
-import { getDefaultAppState } from "../packages/excalidraw/appState";
 import { ErrorDialog } from "../packages/excalidraw/components/ErrorDialog";
 import { TopErrorBoundary } from "./components/TopErrorBoundary";
 import {
@@ -55,7 +54,6 @@ import Collab, {
   isOfflineAtom,
 } from "./collab/Collab";
 import {
-  exportToBackend,
   getCollaborationLinkData,
   isCollaborationLink,
   loadScene,
@@ -663,36 +661,8 @@ const ExcalidrawWrapper = () => {
     if (exportedElements.length === 0) {
       throw new Error(t("alerts.cannotExportEmptyCanvas"));
     }
-    try {
-      const { url, errorMessage } = await exportToBackend(
-        exportedElements,
-        {
-          ...appState,
-          viewBackgroundColor: appState.exportBackground
-            ? appState.viewBackgroundColor
-            : getDefaultAppState().viewBackgroundColor,
-        },
-        files,
-      );
-
-      if (errorMessage) {
-        throw new Error(errorMessage);
-      }
-
-      if (url) {
-        setLatestShareableLink(url);
-      }
-    } catch (error: any) {
-      if (error.name !== "AbortError") {
-        const { width, height } = appState;
-        console.error(error, {
-          width,
-          height,
-          devicePixelRatio: window.devicePixelRatio,
-        });
-        throw new Error(error.message);
-      }
-    }
+    // Not supported as of now
+    throw new Error(t("alerts.couldNotCreateShareableLink"));
   };
 
   const renderCustomStats = (
