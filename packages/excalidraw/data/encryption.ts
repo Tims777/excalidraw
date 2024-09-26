@@ -77,7 +77,7 @@ export const encryptData = async (
 };
 
 export const decryptData = async (
-  iv: Uint8Array,
+  iv: Uint8Array | ArrayBuffer,
   encrypted: Uint8Array | ArrayBuffer,
   privateKey: string,
 ): Promise<ArrayBuffer> => {
