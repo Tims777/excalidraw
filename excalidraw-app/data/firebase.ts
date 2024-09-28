@@ -13,7 +13,6 @@ import type {
   BinaryFileMetadata,
   DataURL,
 } from "../../packages/excalidraw/types";
-import { FILE_CACHE_MAX_AGE_SEC } from "../app_constants";
 import { decompressData } from "../../packages/excalidraw/data/encode";
 import {
   encryptData,
@@ -31,71 +30,7 @@ import type { RemoteExcalidrawElement } from "../../packages/excalidraw/data/rec
 
 const STORAGE_SERVER_URL = import.meta.env.VITE_APP_WS_SERVER_URL;
 
-let FIREBASE_CONFIG: Record<string, any>;
-try {
-  FIREBASE_CONFIG = JSON.parse(import.meta.env.VITE_APP_FIREBASE_CONFIG);
-} catch (error: any) {
-  console.warn(
-    `Error JSON parsing firebase config. Supplied value: ${
-      import.meta.env.VITE_APP_FIREBASE_CONFIG
-    }`,
-  );
-  FIREBASE_CONFIG = {};
-}
-
-let firebasePromise: Promise<typeof import("firebase/app").default> | null =
-  null;
-let firebaseStoragePromise: Promise<any> | null | true = null;
-
-let isFirebaseInitialized = false;
-
-const _loadFirebase = async () => {
-  const firebase = (
-    await import(/* webpackChunkName: "firebase" */ "firebase/app")
-  ).default;
-
-  if (!isFirebaseInitialized) {
-    try {
-      firebase.initializeApp(FIREBASE_CONFIG);
-    } catch (error: any) {
-      // trying initialize again throws. Usually this is harmless, and happens
-      // mainly in dev (HMR)
-      if (error.code === "app/duplicate-app") {
-        console.warn(error.name, error.code);
-      } else {
-        throw error;
-      }
-    }
-    isFirebaseInitialized = true;
-  }
-
-  return firebase;
-};
-
-const _getFirebase = async (): Promise<
-  typeof import("firebase/app").default
-> => {
-  if (!firebasePromise) {
-    firebasePromise = _loadFirebase();
-  }
-  return firebasePromise;
-};
-
 // -----------------------------------------------------------------------------
-
-export const loadFirebaseStorage = async () => {
-  const firebase = await _getFirebase();
-  if (!firebaseStoragePromise) {
-    firebaseStoragePromise = import(
-      /* webpackChunkName: "storage" */ "firebase/storage"
-    );
-  }
-  if (firebaseStoragePromise !== true) {
-    await firebaseStoragePromise;
-    firebaseStoragePromise = true;
-  }
-  return firebase;
-};
 
 interface StoredScene {
   sceneVersion: number;
@@ -162,25 +97,21 @@ export const saveFilesToFirebase = async ({
   prefix: string;
   files: { id: FileId; buffer: Uint8Array }[];
 }) => {
-  const firebase = await loadFirebaseStorage();
-
   const erroredFiles = new Map<FileId, true>();
   const savedFiles = new Map<FileId, true>();
 
   await Promise.all(
     files.map(async ({ id, buffer }) => {
       try {
-        await firebase
-          .storage()
-          .ref(`${prefix}/${id}`)
-          .put(
-            new Blob([buffer], {
-              type: MIME_TYPES.binary,
-            }),
-            {
-              cacheControl: `public, max-age=${FILE_CACHE_MAX_AGE_SEC}`,
-            },
-          );
+        await fetch(`${STORAGE_SERVER_URL}/file/${prefix}/${id}`, {
+          method: "PUT",
+          headers: {
+            ETag: id,
+            // "If-Match": id,
+            "Content-Type": MIME_TYPES.binary,
+          },
+          body: buffer,
+        });
         savedFiles.set(id, true);
       } catch (error: any) {
         erroredFiles.set(id, true);
@@ -248,7 +179,7 @@ export const saveToFirebase = async (
     headers: {
       ETag: storedScene.sceneVersion.toString(),
       "If-Match": prevHash.toString(),
-      "Content-Type": "application/octet-stream",
+      "Content-Type": MIME_TYPES.binary,
     },
     body,
   });
@@ -268,9 +199,7 @@ export const loadFromFirebase = async (
   roomKey: string,
   socket: Socket | null,
 ): Promise<SyncableExcalidrawElement[] | null> => {
-  const resp = await fetch(`${STORAGE_SERVER_URL}/scene/${roomId}`, {
-    method: "GET",
-  });
+  const resp = await fetch(`${STORAGE_SERVER_URL}/scene/${roomId}`);
 
   if (resp.status === 404) {
     return null;
@@ -305,10 +234,9 @@ export const loadFilesFromFirebase = async (
   await Promise.all(
     [...new Set(filesIds)].map(async (id) => {
       try {
-        const url = `https://firebasestorage.googleapis.com/v0/b/${
-          FIREBASE_CONFIG.storageBucket
-        }/o/${encodeURIComponent(prefix.replace(/^\//, ""))}%2F${id}`;
-        const response = await fetch(`${url}?alt=media`);
+        const response = await fetch(
+          `${STORAGE_SERVER_URL}/file/${prefix}/${id}`,
+        );
         if (response.status < 400) {
           const arrayBuffer = await response.arrayBuffer();
 
