@@ -154,7 +154,7 @@ export const saveToFirebase = async (
   // Step 1: Retrieve most recent scene from server
   const prevStoredElements =
     (await loadFromFirebase(roomId, roomKey, socket)) ?? [];
-  const prevHash = hashElementsVersion(elements);
+  const prevHash = hashElementsVersion(prevStoredElements);
 
   // Step 2: Merge local changes to calculate new scene
   const reconciledElements = getSyncableElements(
